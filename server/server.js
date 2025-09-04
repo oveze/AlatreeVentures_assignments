@@ -14,12 +14,13 @@ try {
     console.log('Please add STRIPE_SECRET_KEY to your .env file');
     process.exit(1);
   }
-  if (!process.env.STRIPE_SECRET_KEY.startsWith('sk_test_')) {
+  // Remove this check for production - allow both test and live keys
+  if (process.env.NODE_ENV !== 'production' && !process.env.STRIPE_SECRET_KEY.startsWith('sk_test_')) {
     console.error('ERROR: STRIPE_SECRET_KEY is not a test key. Please use a test key in test mode.');
     process.exit(1);
   }
   stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-  console.log('✅ Stripe initialized successfully in test mode');
+  console.log('✅ Stripe initialized successfully');
 } catch (error) {
   console.error('ERROR: Failed to initialize Stripe:', error.message);
   process.exit(1);
@@ -27,9 +28,9 @@ try {
 
 const app = express();
 
-// Create uploads directory if it doesn't exist
+// Create uploads directory if it doesn't exist (only in local development)
 const uploadsDir = 'uploads';
-if (!fs.existsSync(uploadsDir)) {
+if (process.env.NODE_ENV !== 'production' && !fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
   console.log('✅ Created uploads directory');
 }
@@ -151,6 +152,20 @@ const calculateFees = (baseAmount) => {
 };
 
 // Routes
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Top 216 API Server',
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/api/health',
+      createPaymentIntent: '/api/create-payment-intent',
+      submitEntry: '/api/entries',
+      getUserEntries: '/api/entries/:userId'
+    }
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -465,9 +480,15 @@ app.use((error, req, res, next) => {
   });
 });
 
+// CRITICAL: Export the app for Vercel
+module.exports = app;
+
+// Only listen on a port in development
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🧪 Create test entry: http://localhost:${PORT}/api/create-test-entry/user_test123`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🧪 Create test entry: http://localhost:${PORT}/api/create-test-entry/user_test123`);
+  });
+}
