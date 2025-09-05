@@ -10,6 +10,10 @@
     {
       "src": "/api/(.*)",
       "dest": "/server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/server.js"
     }
   ],
   "functions": {
@@ -39,5 +43,8 @@
         }
       ]
     }
-  ]
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
 }
