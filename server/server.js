@@ -13,18 +13,34 @@ try {
   if (!process.env.STRIPE_SECRET_KEY) {
     throw new Error('STRIPE_SECRET_KEY not found in environment variables');
   }
-  if (!process.env.STRIPE_SECRET_KEY.startsWith('sk_test_')) {
-    throw new Error('STRIPE_SECRET_KEY is not a test key');
+  if (!process.env.STRIPE_SECRET_KEY.startsWith('sk_test_') && !process.env.STRIPE_SECRET_KEY.startsWith('sk_live_')) {
+    throw new Error('STRIPE_SECRET_KEY format is invalid');
   }
   stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-  console.log('✅ Stripe initialized successfully in test mode');
+  console.log('✅ Stripe initialized successfully');
 } catch (error) {
   console.error('ERROR: Failed to initialize Stripe:', error.message);
   stripe = null;
 }
 
+// CORS configuration
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? true // Allow all origins in production (or specify your frontend URL)
+    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'stripe-signature']
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
+
+// Handle preflight OPTIONS requests
+app.options('*', cors(corsOptions));
+
+// Body parsing middleware - note the order and webhook endpoint exception
+app.use('/api/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 // MongoDB Connection with retry logic
@@ -125,7 +141,7 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit
+  limits: { fileSize: 4 * 1024 * 1024 }, // 4MB limit for Vercel compatibility
   fileFilter: fileFilter
 });
 
@@ -136,11 +152,6 @@ const calculateFees = (baseAmount) => {
   return { stripeFee, totalAmount };
 };
 
-// Handle preflight OPTIONS requests
-app.options('*', cors(corsOptions));
-
-app.use(express.json());
-
 // Routes
 app.get('/api/health', async (req, res) => {
   try {
@@ -149,7 +160,9 @@ app.get('/api/health', async (req, res) => {
       message: 'Server is running',
       timestamp: new Date().toISOString(),
       stripeInitialized: !!stripe,
-      mongoConnected: mongoose.connection.readyState === 1
+      mongoConnected: mongoose.connection.readyState === 1,
+      environment: process.env.NODE_ENV || 'development',
+      vercel: !!process.env.VERCEL
     };
     console.log('Health check:', status);
     res.json(status);
@@ -323,8 +336,8 @@ app.post('/api/entries', upload.single('file'), async (req, res) => {
       if (!allowedTypes.includes(req.file.mimetype)) {
         return res.status(400).json({ error: 'Invalid file type. Only PDF, PPT, PPTX allowed.' });
       }
-      if (req.file.size > 25 * 1024 * 1024) {
-        return res.status(400).json({ error: 'File size exceeds 25MB limit.' });
+      if (req.file.size > 4 * 1024 * 1024) {
+        return res.status(400).json({ error: 'File size exceeds 4MB limit.' });
       }
     }
 
@@ -475,7 +488,7 @@ app.delete('/api/entries/:id', async (req, res) => {
   }
 });
 
-app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/api/webhook', async (req, res) => {
   const sig = req.headers['stripe-signature'];
   try {
     if (!process.env.STRIPE_WEBHOOK_SECRET) {
@@ -511,5 +524,21 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Export for Vercel
-module.exports = app;
+// Export for Vercel serverless functions or start server locally
+if (process.env.VERCEL) {
+  // Export for Vercel serverless functions
+  module.exports = app;
+} else {
+  // Start server locally
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, async () => {
+    try {
+      await connectDB();
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+    } catch (error) {
+      console.error('Failed to start server:', error.message);
+      process.exit(1);
+    }
+  });
+}
