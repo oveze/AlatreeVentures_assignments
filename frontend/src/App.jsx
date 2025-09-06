@@ -8,26 +8,61 @@ import './App.css';
 // Initialize Stripe with the publishable key
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
+// Use the correct backend URL - updated to match your provided URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://alatree-ventures-assignmentsas.vercel.app';
+
 function App() {
   const [currentView, setCurrentView] = useState('submit');
-  // Fixed: Use in-memory user ID instead of localStorage
   const [userId] = useState(() => {
-    return 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    let storedUserId = localStorage.getItem('top216_user_id');
+    if (!storedUserId) {
+      storedUserId = 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+      localStorage.setItem('top216_user_id', storedUserId);
+    }
+    return storedUserId;
   });
 
   useEffect(() => {
     console.log('=== App Initialization ===');
     console.log('User ID:', userId);
-    console.log('API URL:', import.meta.env.VITE_API_URL || 'http://localhost:5000');
-    console.log('Stripe Key:', import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ? 'Loaded' : 'Missing');
+    console.log('API_BASE_URL:', API_BASE_URL);
+    console.log('VITE_API_URL:', import.meta.env.VITE_API_URL || 'Not set - using production default');
+    console.log('VITE_STRIPE_PUBLISHABLE_KEY:', import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ? 'Set' : 'Not set');
+    
+    // Test backend connectivity
+    testBackendConnection();
   }, [userId]);
+
+  const testBackendConnection = async () => {
+    try {
+      console.log('Testing backend connection to:', API_BASE_URL);
+      const response = await fetch(`${API_BASE_URL}/api/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Backend connection successful:', data);
+      } else {
+        console.warn('⚠️ Backend responded with status:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Backend connection failed:', error);
+      console.log('💡 Tip: Make sure your backend is deployed and running at:', API_BASE_URL);
+    }
+  };
 
   const handleCreateTestEntry = async () => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      console.log('Creating test entry with API URL:', API_URL);
-      
-      const response = await fetch(`${API_URL}/api/create-test-entry/${userId}`);
+      console.log('Creating test entry via:', `${API_BASE_URL}/api/create-test-entry/${userId}`);
+      const response = await fetch(`${API_BASE_URL}/api/create-test-entry/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       const data = await response.json();
       if (response.ok) {
         alert(`Test entry created successfully! Entry ID: ${data.id}`);
@@ -41,16 +76,19 @@ function App() {
       }
     } catch (error) {
       console.error('Error creating test entry:', error);
-      alert('Failed to create test entry: ' + error.message);
+      alert('Failed to create test entry. Please check console for details.');
     }
   };
 
   const handleCreateMultipleTestEntries = async () => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      console.log('Creating multiple test entries with API URL:', API_URL);
-      
-      const response = await fetch(`${API_URL}/api/create-test-entries/${userId}`);
+      console.log('Creating multiple test entries via:', `${API_BASE_URL}/api/create-test-entries/${userId}`);
+      const response = await fetch(`${API_BASE_URL}/api/create-test-entries/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       const data = await response.json();
       if (response.ok) {
         alert(`${data.entries.length} test entries created successfully!`);
@@ -64,7 +102,7 @@ function App() {
       }
     } catch (error) {
       console.error('Error creating test entries:', error);
-      alert('Failed to create test entries: ' + error.message);
+      alert('Failed to create test entries. Please check console for details.');
     }
   };
 
@@ -81,7 +119,8 @@ function App() {
                 </div>
                 <div className="text-right text-sm text-white">
                   <p>User ID: {userId.substring(0, 12)}...</p>
-                  <p className="text-xs">Test Environment</p>
+                  <p className="text-xs">Production Environment</p>
+                  <p className="text-xs">API: {API_BASE_URL.includes('vercel') ? 'Production' : 'Local'}</p>
                 </div>
               </div>
               <nav className="mt-6">
@@ -108,7 +147,7 @@ function App() {
                       My Entries
                     </button>
                   </div>
-                 
+                  
                 </div>
               </nav>
             </div>
@@ -117,7 +156,9 @@ function App() {
           <main className="max-w-4xl mx-auto px-4 py-8">
             {currentView === 'submit' ? (
               <>
-                <div className="mb-6 text-white text-2xl font-semibold">Welcome to <span className='text-yellow-300'>Top216.com</span> - A global competition platform</div>
+                <div className="mb-6 text-white text-2xl font-semibold">
+                  Welcome to<span className='text-yellow-300'> Top216.com </span> - A global competition platform
+                </div>
                 <EntryForm userId={userId} />
               </>
             ) : (
@@ -152,11 +193,15 @@ function App() {
                     <li>✅ Stripe Test Mode</li>
                     <li>✅ File Upload Ready</li>
                     <li>✅ Payment Processing</li>
+                    <li>🌐 Backend: {API_BASE_URL.includes('vercel') ? 'Production' : 'Development'}</li>
                   </ul>
                 </div>
               </div>
               <div className="mt-8 pt-8 border-t text-center text-sm text-white">
                 <p>&copy; 2025 Top216.com - Global Competition Platform</p>
+                <p className="mt-2 text-xs text-gray-400">
+                  API Endpoint: {API_BASE_URL}
+                </p>
               </div>
             </div>
           </footer>
